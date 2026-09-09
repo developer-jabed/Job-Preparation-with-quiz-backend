@@ -314,10 +314,6 @@ model QuestionTag {
   @@id([questionId, tagId])
 }
 
-// ======================
-// TESTS
-// ======================
-
 model Test {
   id              String     @id @default(cuid())
   title           String

@@ -230,7 +230,6 @@ const getAttemptResult = async (attemptId: string, userId: string) => {
           question: {
             include: {
               options: true,
-              explanation: true,
             },
           },
         },
