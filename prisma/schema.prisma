@@ -1,0 +1,466 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ======================
+// ENUMS
+// ======================
+
+enum Role {
+  ADMIN
+  LEARNER
+}
+
+enum QuestionType {
+  SINGLE_CORRECT
+  MULTIPLE_CORRECT
+  TRUE_FALSE
+  ASSERTION_REASON
+  FILL_BLANK
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum TestType {
+  PRACTICE
+  SECTIONAL
+  FULL_MOCK
+  PREVIOUS_YEAR
+  CUSTOM
+  DAILY_QUIZ
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+  TIMED_OUT
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_EDIT
+}
+
+enum PdfStatus {
+  UPLOADED
+  PROCESSING
+  EXTRACTED
+  REVIEW
+  COMPLETED
+  FAILED
+}
+
+// ======================
+// AUTH & USERS
+// ======================
+
+model User {
+  id                String         @id @default(cuid())
+  email             String         @unique
+  phone             String?        @unique
+  password          String
+  name              String
+  role              Role           @default(LEARNER)
+  avatar            String?
+  preferredLanguage String         @default("en") // en | hi
+  isEmailVerified   Boolean        @default(false)
+  isActive          Boolean        @default(true)
+  streakDays        Int            @default(0)
+  lastActiveAt      DateTime?
+
+  // Relations
+  testAttempts      TestAttempt[]
+  bookmarks         Bookmark[]
+  reports           QuestionReport[]
+  createdQuestions  Question[]     @relation("CreatedBy")
+  reviewedQuestions Question[]     @relation("ReviewedBy")
+  pdfUploads        PdfUpload[]
+  refreshTokens     RefreshToken[]
+  spacedReviews     SpacedReview[]
+
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ======================
+// TAXONOMY
+// ======================
+
+model Subject {
+  id          String     @id @default(cuid())
+  name        String
+  nameHi      String?
+  slug        String     @unique
+  description String?
+  icon        String?
+  order       Int        @default(0)
+  isActive    Boolean    @default(true)
+
+  categories  Category[]
+  questions   Question[]
+  tests       Test[]
+  pdfUploads  PdfUpload[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  nameHi      String?
+  slug        String
+  description String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  subjectId   String
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+
+  topics      Topic[]
+  questions   Question[]
+  tests       Test[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([subjectId, slug])
+  @@index([subjectId])
+}
+
+model Topic {
+  id          String   @id @default(cuid())
+  name        String
+  nameHi      String?
+  slug        String
+  description String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+
+  questions   Question[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([categoryId, slug])
+  @@index([categoryId])
+}
+
+// ======================
+// PDF UPLOAD + AI EXTRACTION
+// ======================
+
+model PdfUpload {
+  id              String     @id @default(cuid())
+  originalName    String
+  fileUrl         String
+  fileSize        Int
+  pageCount       Int?
+  status          PdfStatus  @default(UPLOADED)
+  errorMessage    String?
+
+  subjectId       String?
+  subject         Subject?   @relation(fields: [subjectId], references: [id])
+  examName        String?
+  year            Int?
+
+  uploadedById    String
+  uploadedBy      User       @relation(fields: [uploadedById], references: [id])
+
+  extractedQuestions ExtractedQuestion[]
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([status])
+  @@index([uploadedById])
+}
+
+model ExtractedQuestion {
+  id              String       @id @default(cuid())
+  rawText         String
+  questionText    String?
+  options         Json?
+  correctAnswers  String[]
+  explanation     String?
+  difficulty      Difficulty?
+  questionType    QuestionType @default(SINGLE_CORRECT)
+  confidenceScore Float?
+  status          ReviewStatus @default(PENDING)
+  reviewNote      String?
+
+  pdfUploadId     String
+  pdfUpload       PdfUpload    @relation(fields: [pdfUploadId], references: [id], onDelete: Cascade)
+
+  finalQuestionId String?      @unique
+  finalQuestion   Question?    @relation(fields: [finalQuestionId], references: [id])
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([status])
+  @@index([pdfUploadId])
+}
+
+// ======================
+// QUESTIONS
+// ======================
+
+model Question {
+  id              String        @id @default(cuid())
+  questionText    String
+  questionTextHi  String?
+  questionType    QuestionType  @default(SINGLE_CORRECT)
+  difficulty      Difficulty    @default(MEDIUM)
+  marks           Float         @default(1)
+  negativeMarks   Float         @default(0.25)
+  explanation     String?
+  explanationHi   String?
+  isActive        Boolean       @default(true)
+  isPreviousYear  Boolean       @default(false)
+  year            Int?
+  examName        String?
+  source          String?
+
+  subjectId       String
+  subject         Subject       @relation(fields: [subjectId], references: [id])
+  categoryId      String?
+  category        Category?     @relation(fields: [categoryId], references: [id])
+  topicId         String?
+  topic           Topic?        @relation(fields: [topicId], references: [id])
+
+  createdById     String?
+  createdBy       User?         @relation("CreatedBy", fields: [createdById], references: [id])
+  reviewedById    String?
+  reviewedBy      User?         @relation("ReviewedBy", fields: [reviewedById], references: [id])
+
+  options         Option[]
+  tags            QuestionTag[]
+  testQuestions   TestQuestion[]
+  userAnswers     UserAnswer[]
+  bookmarks       Bookmark[]
+  reports         QuestionReport[]
+  extractedFrom   ExtractedQuestion?
+  spacedReviews   SpacedReview[]
+
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  @@index([subjectId, categoryId, topicId])
+  @@index([difficulty])
+  @@index([isPreviousYear, year])
+  @@index([examName])
+  @@index([isActive])
+}
+
+model Option {
+  id          String   @id @default(cuid())
+  text        String
+  textHi      String?
+  isCorrect   Boolean  @default(false)
+  order       Int      @default(0)
+
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model Tag {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  slug      String        @unique
+  questions QuestionTag[]
+  createdAt DateTime      @default(now())
+}
+
+model QuestionTag {
+  questionId String
+  tagId      String
+
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+}
+
+// ======================
+// TESTS
+// ======================
+
+model Test {
+  id              String     @id @default(cuid())
+  title           String
+  titleHi         String?
+  slug            String     @unique
+  description     String?
+  testType        TestType   @default(PRACTICE)
+  durationMinutes Int
+  totalMarks      Float
+  totalQuestions  Int
+  passingMarks    Float?
+  isFree          Boolean    @default(true)
+  isActive        Boolean    @default(true)
+  isFeatured      Boolean    @default(false)
+  instructions    String?
+
+  subjectId       String?
+  subject         Subject?   @relation(fields: [subjectId], references: [id])
+  categoryId      String?
+  category        Category?  @relation(fields: [categoryId], references: [id])
+
+  questions       TestQuestion[]
+  attempts        TestAttempt[]
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([testType, isActive, isFree])
+  @@index([isFeatured])
+}
+
+model TestQuestion {
+  id          String   @id @default(cuid())
+  order       Int
+  marks       Float?
+
+  testId      String
+  test        Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id])
+
+  @@unique([testId, questionId])
+  @@index([testId])
+}
+
+// ======================
+// ATTEMPTS & RESULTS
+// ======================
+
+model TestAttempt {
+  id               String        @id @default(cuid())
+  status           AttemptStatus @default(IN_PROGRESS)
+  startedAt        DateTime      @default(now())
+  submittedAt      DateTime?
+  timeTakenSeconds Int?
+
+  totalMarks       Float?
+  obtainedMarks    Float?
+  correctCount     Int?
+  wrongCount       Int?
+  skippedCount     Int?
+  accuracy         Float?
+  percentile       Float?
+
+  userId           String
+  user             User          @relation(fields: [userId], references: [id])
+  testId           String
+  test             Test          @relation(fields: [testId], references: [id])
+
+  answers          UserAnswer[]
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([userId, testId])
+  @@index([status])
+  @@index([submittedAt])
+}
+
+model UserAnswer {
+  id               String   @id @default(cuid())
+  selectedOptions  String[]
+  isCorrect        Boolean?
+  marksObtained    Float?
+  timeSpentSeconds Int?
+
+  attemptId        String
+  attempt          TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+// ======================
+// EXTRA FEATURES
+// ======================
+
+model Bookmark {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, questionId])
+}
+
+model QuestionReport {
+  id          String   @id @default(cuid())
+  reason      String
+  description String?
+  status      String   @default("PENDING")
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+model SpacedReview {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questionId      String
+  question        Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  easeFactor      Float    @default(2.5)
+  intervalDays    Int      @default(1)
+  repetitions     Int      @default(0)
+  nextReviewAt    DateTime
+  lastReviewedAt  DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, questionId])
+  @@index([userId, nextReviewAt])
+}
