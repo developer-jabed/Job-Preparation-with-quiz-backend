@@ -15,6 +15,8 @@ import pdfUploadRoutes from "../modules/pdf-upload/pdf-upload.routes.js";
 import tagRoutes from "../modules/tag/tag.routes.js";
 import categoryRoutes from "../modules/category/category.route.js";
 import analyticsRoutes from "../modules/analytics/analytics.routes.js";
+import extractedQuestionRoutes from "../modules/extracted-question/extracted-question.routes.js";
+import dashboardRoutes from "../modules/dashboard/dashboard.route.js";
 
 async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health Check
@@ -87,6 +89,18 @@ async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.register(analyticsRoutes, {
     prefix: "/analytics",
   });
+
+
+  fastify.register(extractedQuestionRoutes, {
+    prefix: "/extracted-questions",
+  });
+
+
+  fastify.register(dashboardRoutes, {
+    prefix: "/dashboard",
+  });
+
+
 }
 
 export default registerRoutes;

@@ -51,7 +51,7 @@ export interface CloudinaryResult {
   height?: number;
 }
 
-// ── Read multipart file into buffer with better MIME detection ───────────────
+// ── Read multipart file into buffer ────────────────────────────────────────────
 export const readFileBuffer = async (
   file: MultipartFile,
 ): Promise<UploadedFile> => {
@@ -63,17 +63,16 @@ export const readFileBuffer = async (
   if (mimetype === "application/octet-stream" || !mimetype) {
     const ext = filename.split(".").pop()?.toLowerCase();
     const extToMime: Record<string, string> = {
-      "jpg": "image/jpeg",
-      "jpeg": "image/jpeg",
-      "png": "image/png",
-      "webp": "image/webp",
-      "gif": "image/gif",
-      "pdf": "application/pdf",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      gif: "image/gif",
+      pdf: "application/pdf",
     };
     mimetype = extToMime[ext || ""] || mimetype;
   }
 
-  // Final validation
   if (!ALLOWED_TYPES.includes(mimetype)) {
     throw new Error(`Unsupported file type: ${mimetype}`);
   }
@@ -85,14 +84,20 @@ export const verifyCloudinary = async (): Promise<void> => {
   await cloudinary.api.ping();
 };
 
-// ── Upload buffer to Cloudinary ────────────────────────────────────────────────
+// ── Upload buffer to Cloudinary (FIXED) ────────────────────────────────────────
 export const uploadToCloudinary = async (
   file: UploadedFile,
   folder: string = "uploads",
 ): Promise<CloudinaryResult> => {
   return new Promise((resolve, reject) => {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const publicId = file.filename.split(".")[0] ?? `upload-${uniqueSuffix}`;
+    const originalName = file.filename.split(".")[0] || "file";
+    const publicId = `${originalName}-${uniqueSuffix}`;
+
+    // Decide resource type
+    const isPdf = file.mimetype === "application/pdf";
+    const resourceType = isPdf ? "raw" : "image";
+
     const base64 = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
 
     cloudinary.uploader.upload(
@@ -100,13 +105,23 @@ export const uploadToCloudinary = async (
       {
         public_id: publicId,
         folder,
-        resource_type: "auto",
+        resource_type: resourceType,   // ← "raw" for PDF, "image" for images
+        access_mode: "public",         // ← THIS FIXES THE 401
+        type: "upload",
+        overwrite: false,
       },
       (error, result) => {
         if (error || !result) {
           console.error("Cloudinary Upload Error:", error);
           return reject(error ?? new Error("Cloudinary upload failed"));
         }
+
+        console.log("✅ Cloudinary upload success:", {
+          public_id: result.public_id,
+          resource_type: result.resource_type,
+          secure_url: result.secure_url,
+        });
+
         resolve(result as CloudinaryResult);
       },
     );
@@ -116,8 +131,11 @@ export const uploadToCloudinary = async (
 // ── Delete from Cloudinary ─────────────────────────────────────────────────────
 export const deleteFromCloudinary = async (
   publicId: string,
+  resourceType: "image" | "raw" = "image",
 ): Promise<void> => {
-  await cloudinary.uploader.destroy(publicId);
+  await cloudinary.uploader.destroy(publicId, {
+    resource_type: resourceType,
+  });
 };
 
 // ── Save to disk ───────────────────────────────────────────────────────────────
@@ -141,4 +159,5 @@ export const fileUploader = {
   uploadToCloudinary,
   deleteFromCloudinary,
   saveToDisk,
+  verifyCloudinary,
 };

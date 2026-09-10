@@ -23,7 +23,7 @@ const createQuestion = async (payload: ICreateQuestion, userId: string) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "At least one correct option is required");
   }
 
-  // Validate taxonomy
+  // Validate subject
   const subject = await prisma.subject.findUnique({
     where: { id: questionData.subjectId },
   });
@@ -31,6 +31,7 @@ const createQuestion = async (payload: ICreateQuestion, userId: string) => {
     throw new ApiError(httpStatus.NOT_FOUND, "Subject not found");
   }
 
+  // Validate category belongs to subject
   if (questionData.categoryId) {
     const category = await prisma.category.findFirst({
       where: { id: questionData.categoryId, subjectId: questionData.subjectId },
@@ -40,12 +41,24 @@ const createQuestion = async (payload: ICreateQuestion, userId: string) => {
     }
   }
 
+  // Validate topic belongs to category
   if (questionData.topicId && questionData.categoryId) {
     const topic = await prisma.topic.findFirst({
       where: { id: questionData.topicId, categoryId: questionData.categoryId },
     });
     if (!topic) {
       throw new ApiError(httpStatus.BAD_REQUEST, "Topic does not belong to the category");
+    }
+  }
+
+  // Validate all tagIds exist
+  if (tagIds && tagIds.length > 0) {
+    const existingTags = await prisma.tag.findMany({
+      where: { id: { in: tagIds } },
+      select: { id: true },
+    });
+    if (existingTags.length !== tagIds.length) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "One or more tags not found");
     }
   }
 
@@ -185,14 +198,25 @@ const updateQuestion = async (id: string, payload: IUpdateQuestion) => {
 
   const { options, tagIds, ...updateData } = payload;
 
+  // Validate tags if provided
+  if (tagIds && tagIds.length > 0) {
+    const existingTags = await prisma.tag.findMany({
+      where: { id: { in: tagIds } },
+      select: { id: true },
+    });
+    if (existingTags.length !== tagIds.length) {
+      throw new ApiError(httpStatus.BAD_REQUEST, "One or more tags not found");
+    }
+  }
+
   return prisma.$transaction(async (tx) => {
-    // If options are provided → delete old + create new
+    // Replace options if provided
     if (options) {
       await tx.option.deleteMany({ where: { questionId: id } });
     }
 
-    // If tags are provided → replace
-    if (tagIds) {
+    // Replace tags if provided
+    if (tagIds !== undefined) {
       await tx.questionTag.deleteMany({ where: { questionId: id } });
     }
 
@@ -210,7 +234,7 @@ const updateQuestion = async (id: string, payload: IUpdateQuestion) => {
             })),
           },
         }),
-        ...(tagIds && {
+        ...(tagIds !== undefined && {
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),
           },
