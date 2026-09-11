@@ -88,6 +88,39 @@ const getAttemptResult = catchAsync(async (req: FastifyRequest, res: FastifyRepl
   });
 });
 
+// ======================
+// ADMIN: list all attempts
+// ======================
+const getAllTestAttempts = catchAsync(async (req: FastifyRequest, res: FastifyReply) => {
+  const query = req.query as {
+    page?: string;
+    limit?: string;
+    searchTerm?: string;
+    testId?: string;
+    status?: string;
+    sortBy?: string;
+    sortOrder?: "asc" | "desc";
+  };
+
+  const result = await TestAttemptService.getAllTestAttempts({
+    page: query.page ? Number(query.page) : undefined,
+    limit: query.limit ? Number(query.limit) : undefined,
+    searchTerm: query.searchTerm,
+    testId: query.testId,
+    status: query.status,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Test attempts retrieved successfully",
+    meta: result.meta,
+    data: result.data,
+  });
+});
+
 export const TestAttemptController = {
   startAttempt,
   saveAnswer,
@@ -95,4 +128,5 @@ export const TestAttemptController = {
   getMyAttempts,
   getAttemptById,
   getAttemptResult,
+  getAllTestAttempts,
 };

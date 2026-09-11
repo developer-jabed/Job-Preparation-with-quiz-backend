@@ -307,6 +307,117 @@ const getAttemptResult = async (attemptId: string, userId: string) => {
   return attempt;
 };
 
+// ======================
+// ADMIN: list all attempts (paginated, filterable, searchable)
+// ======================
+export interface IGetAllTestAttemptsParams {
+  page?: number;
+  limit?: number;
+  searchTerm?: string;
+  testId?: string;
+  status?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+const ATTEMPT_SORTABLE_FIELDS = new Set([
+  "createdAt",
+  "submittedAt",
+  "startedAt",
+  "obtainedMarks",
+  "accuracy",
+  "timeTakenSeconds",
+]);
+
+// Returns meta matching PaginationMeta: { page, limit, total, totalPages, hasNextPage, hasPrevPage }
+const getAllTestAttempts = async (params: IGetAllTestAttemptsParams) => {
+  const page = Number(params.page) > 0 ? Number(params.page) : 1;
+  const limit = Number(params.limit) > 0 ? Number(params.limit) : 10;
+  const skip = (page - 1) * limit;
+
+  const sortBy = ATTEMPT_SORTABLE_FIELDS.has(params.sortBy ?? "")
+    ? (params.sortBy as string)
+    : "createdAt";
+  const sortOrder: "asc" | "desc" = params.sortOrder === "asc" ? "asc" : "desc";
+
+  const andConditions: Record<string, unknown>[] = [];
+
+  if (params.testId) {
+    andConditions.push({ testId: params.testId });
+  }
+
+  if (params.status) {
+    andConditions.push({ status: params.status });
+  }
+
+  if (params.searchTerm) {
+    // Assumes TestAttempt has a `user` relation with name/email.
+    // Remove/adjust if your schema differs.
+    andConditions.push({
+      OR: [
+        {
+          test: {
+            title: { contains: params.searchTerm, mode: "insensitive" },
+          },
+        },
+        {
+          user: {
+            name: { contains: params.searchTerm, mode: "insensitive" },
+          },
+        },
+        {
+          user: {
+            email: { contains: params.searchTerm, mode: "insensitive" },
+          },
+        },
+      ],
+    });
+  }
+
+  const where = andConditions.length > 0 ? { AND: andConditions } : {};
+
+  const [data, total] = await Promise.all([
+    prisma.testAttempt.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { [sortBy]: sortOrder },
+      include: {
+        test: {
+          select: {
+            id: true,
+            title: true,
+            testType: true,
+            totalMarks: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    }),
+    prisma.testAttempt.count({ where }),
+  ]);
+
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPrevPage: page > 1,
+    },
+    data,
+  };
+};
+
 export const TestAttemptService = {
   startAttempt,
   saveAnswer,
@@ -314,4 +425,5 @@ export const TestAttemptService = {
   getMyAttempts,
   getAttemptById,
   getAttemptResult,
+  getAllTestAttempts,
 };

@@ -52,6 +52,16 @@ export default async function testAttemptRoutes(fastify: FastifyInstance) {
     TestAttemptController.getMyAttempts
   );
 
+  // ADMIN: list/search/filter/paginate all attempts across users
+  // Adjust auth("ADMIN") to match your actual role enum/signature.
+  fastify.get(
+    "/",
+    {
+      preHandler: [auth("ADMIN")],
+    },
+    TestAttemptController.getAllTestAttempts
+  );
+
   // Get detailed result (COMPLETED / TIMED_OUT only)
   // Keep this BEFORE generic /:attemptId
   fastify.get(
