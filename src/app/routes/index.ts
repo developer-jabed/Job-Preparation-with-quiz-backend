@@ -17,6 +17,7 @@ import categoryRoutes from "../modules/category/category.route.js";
 import analyticsRoutes from "../modules/analytics/analytics.routes.js";
 import extractedQuestionRoutes from "../modules/extracted-question/extracted-question.routes.js";
 import dashboardRoutes from "../modules/dashboard/dashboard.route.js";
+import masterySetupRoutes from "../modules/mastery/mastery.route.js";
 
 async function registerRoutes(fastify: FastifyInstance): Promise<void> {
   // Health Check
@@ -98,6 +99,11 @@ async function registerRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.register(dashboardRoutes, {
     prefix: "/dashboard",
+  });
+
+
+  fastify.register(masterySetupRoutes, {
+    prefix: "/mastery-setup",
   });
 
 

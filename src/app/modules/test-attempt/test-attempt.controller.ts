@@ -60,6 +60,20 @@ const getMyAttempts = catchAsync(async (req: FastifyRequest, res: FastifyReply) 
   });
 });
 
+const getAttemptById = catchAsync(async (req: FastifyRequest, res: FastifyReply) => {
+  const userId = (req as any).user.id;
+  const { attemptId } = req.params as { attemptId: string };
+
+  const result = await TestAttemptService.getAttemptById(attemptId, userId);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Attempt retrieved successfully",
+    data: result,
+  });
+});
+
 const getAttemptResult = catchAsync(async (req: FastifyRequest, res: FastifyReply) => {
   const userId = (req as any).user.id;
   const { attemptId } = req.params as { attemptId: string };
@@ -79,5 +93,6 @@ export const TestAttemptController = {
   saveAnswer,
   submitAttempt,
   getMyAttempts,
+  getAttemptById,
   getAttemptResult,
 };

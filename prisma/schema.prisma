@@ -88,6 +88,7 @@ model User {
   pdfUploads        PdfUpload[]
   refreshTokens     RefreshToken[]
   spacedReviews     SpacedReview[]
+  questionStats     UserQuestionStat[]
 
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
@@ -125,6 +126,7 @@ model Subject {
   questions   Question[]
   tests       Test[]
   pdfUploads  PdfUpload[]
+  testTemplates     TestTemplate[]
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -270,6 +272,7 @@ model Question {
   reports         QuestionReport[]
   extractedFrom   ExtractedQuestion?
   spacedReviews   SpacedReview[]
+  userStats         UserQuestionStat[]
 
 
   createdAt       DateTime      @default(now())
@@ -337,6 +340,7 @@ model Test {
 
   questions       TestQuestion[]
   attempts        TestAttempt[]
+  generationLog     TestGenerationLog?
 
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -459,4 +463,177 @@ model SpacedReview {
 
   @@unique([userId, questionId])
   @@index([userId, nextReviewAt])
+}
+
+enum TemplateEntityType {
+  SUBJECT
+  CATEGORY
+  TOPIC
+}
+
+enum TemplateStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+
+model TestTemplate {
+  id               String         @id @default(cuid())
+  name             String
+  nameHi           String?
+  slug             String         @unique
+  description      String?
+  /// PRACTICE | SECTIONAL | FULL_MOCK | DAILY_QUIZ | CUSTOM ...
+  testType         TestType       @default(PRACTICE)
+  status           TemplateStatus @default(DRAFT)
+
+  totalQuestions   Int
+  durationMinutes  Int
+  totalMarks       Float?
+  passingMarks     Float?
+  isFree           Boolean        @default(true)
+
+
+  config           Json
+
+  /// Optional default subject when fully mapped (nullable until content exists)
+  subjectId        String?
+  subject          Subject?       @relation(fields: [subjectId], references: [id])
+
+  /// For UI badges: "Computer Operator", "BCC", "ICT Division"
+  examTag          String?
+  /// Sort / feature
+  order            Int            @default(0)
+  isFeatured       Boolean        @default(false)
+
+  generationLogs   TestGenerationLog[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status, testType])
+  @@index([examTag])
+  @@index([isFeatured, order])
+}
+
+
+model TaxonomyMap {
+  id          String             @id @default(cuid())
+  /// Stable machine key: "ms-excel", "hardware-os", "networking"
+  key         String             @unique
+  label       String
+  labelHi     String?
+  entityType  TemplateEntityType
+  /// null = not linked yet
+  entityId    String?
+
+  /// Optional hints for AI / admin
+  description String?
+  /// Higher = prefer when auto-suggesting weights
+  defaultWeight Int              @default(1)
+
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([entityType, entityId])
+}
+
+
+model TaxonomyAlias {
+  id          String             @id @default(cuid())
+  /// Display form as entered
+  alias       String
+  /// Normalized search key (lowercase, trimmed, collapsed spaces)
+  normalized  String
+  entityType  TemplateEntityType
+  /// Points to Subject / Category / Topic id OR TaxonomyMap.key via map
+  entityId    String?
+  /// If still only logical: link to map key
+  mapKey      String?
+
+  createdAt   DateTime           @default(now())
+
+  @@unique([entityType, normalized])
+  @@index([normalized])
+  @@index([entityId])
+  @@index([mapKey])
+}
+
+model UserQuestionStat {
+  id             String    @id @default(cuid())
+  userId         String
+  questionId     String
+
+  timesShown     Int       @default(0)
+  timesCorrect   Int       @default(0)
+  timesWrong     Int       @default(0)
+  timesSkipped   Int       @default(0)
+
+  /// 0=new 1=seen 2=learning 3=familiar 4=mastered
+  masteryLevel   Int       @default(0)
+
+  lastShownAt    DateTime?
+  lastCorrectAt  DateTime?
+  lastWrongAt    DateTime?
+
+  /// Soft lock: do not show again before this time (cooldown)
+  cooldownUntil  DateTime?
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question       Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, questionId])
+  @@index([userId, lastShownAt])
+  @@index([userId, masteryLevel])
+  @@index([userId, cooldownUntil])
+  @@index([questionId])
+}
+
+
+model TestGenerationLog {
+  id              String        @id @default(cuid())
+  userId          String?
+  templateId      String?
+  template        TestTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  testId          String?       @unique
+  test            Test?         @relation(fields: [testId], references: [id], onDelete: SetNull)
+
+  /// Snapshot of rules used (cooldown days, mode, section keys…)
+  params          Json
+  /// How many questions picked per section key
+  sectionResult   Json
+  /// questionIds selected (ordered)
+  questionIds     String[]
+  success         Boolean       @default(true)
+  message         String?
+
+  createdAt       DateTime      @default(now())
+
+  @@index([userId, createdAt])
+  @@index([templateId, createdAt])
+}
+
+
+model GenerationPolicy {
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  /// Days before same question can appear again for a user
+  cooldownDays       Int      @default(14)
+  /// Max times a question may be shown to one user in windowDays
+  maxShowInWindow    Int      @default(2)
+  windowDays         Int      @default(30)
+  /// Priority weights (tunable without code deploy)
+  weightNeverSeen    Int      @default(100)
+  weightWrong        Int      @default(40)
+  weightLowMastery   Int      @default(20)
+  weightOverShown    Int      @default(-50)
+  /// Prefer questions user got wrong within N days
+  wrongBoostDays     Int      @default(21)
+  isDefault          Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

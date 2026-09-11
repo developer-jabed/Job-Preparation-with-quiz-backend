@@ -1,11 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { Role } from "@prisma/client";
 import { TestAttemptController } from "./test-attempt.controller.js";
 import auth from "../../middlewares/auth.middleware.js";
 import validateRequest from "../../middlewares/validateRequest.js";
 import { z } from "zod";
 
-// Simple inline validation (you can move to a separate validation file later)
 const startAttemptSchema = z.object({
   body: z.object({
     testId: z.string().cuid("Invalid testId"),
@@ -21,7 +19,7 @@ const saveAnswerSchema = z.object({
 });
 
 export default async function testAttemptRoutes(fastify: FastifyInstance) {
-  // All routes require authentication (LEARNER or ADMIN)
+  // All routes require authentication
   fastify.addHook("preHandler", auth());
 
   // Start a new attempt (or resume existing)
@@ -54,9 +52,16 @@ export default async function testAttemptRoutes(fastify: FastifyInstance) {
     TestAttemptController.getMyAttempts
   );
 
-  // Get detailed result of a specific attempt
+  // Get detailed result (COMPLETED / TIMED_OUT only)
+  // Keep this BEFORE generic /:attemptId
   fastify.get(
     "/:attemptId/result",
     TestAttemptController.getAttemptResult
+  );
+
+  // Get single attempt (IN_PROGRESS included) — for taking the test
+  fastify.get(
+    "/:attemptId",
+    TestAttemptController.getAttemptById
   );
 }

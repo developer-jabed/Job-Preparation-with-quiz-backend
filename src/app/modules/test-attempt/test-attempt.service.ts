@@ -217,6 +217,68 @@ const getMyAttempts = async (userId: string) => {
   });
 };
 
+const getAttemptById = async (attemptId: string, userId: string) => {
+  const attempt = await prisma.testAttempt.findFirst({
+    where: { id: attemptId, userId },
+    include: {
+      test: {
+        select: {
+          id: true,
+          title: true,
+          titleHi: true,
+          durationMinutes: true,
+          totalQuestions: true,
+          totalMarks: true,
+          testType: true,
+          questions: {
+            orderBy: { order: "asc" },
+            select: {
+              id: true,
+              order: true,
+              marks: true,
+              question: {
+                select: {
+                  id: true,
+                  questionText: true,
+                  questionTextHi: true,
+                  questionType: true,
+                  difficulty: true,
+                  marks: true,
+                  negativeMarks: true,
+                  // Do NOT expose isCorrect while taking the test
+                  options: {
+                    orderBy: { order: "asc" },
+                    select: {
+                      id: true,
+                      text: true,
+                      textHi: true,
+                      order: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      answers: {
+        select: {
+          id: true,
+          questionId: true,
+          selectedOptions: true,
+          timeSpentSeconds: true,
+        },
+      },
+    },
+  });
+
+  if (!attempt) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Attempt not found");
+  }
+
+  return attempt;
+};
+
 const getAttemptResult = async (attemptId: string, userId: string) => {
   const attempt = await prisma.testAttempt.findFirst({
     where: {
@@ -250,5 +312,6 @@ export const TestAttemptService = {
   saveAnswer,
   submitAttempt,
   getMyAttempts,
+  getAttemptById,
   getAttemptResult,
 };
